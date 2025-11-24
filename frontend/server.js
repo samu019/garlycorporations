@@ -1,82 +1,60 @@
-﻿import express from 'express';
-import cors from 'cors';
-import dotenv from 'dotenv';
-import path from 'path';
-import { fileURLToPath } from 'url';
-import fs from 'fs';
-
-// Configurar dotenv
-dotenv.config();
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+﻿require('dotenv').config(); // Esto es importante
+const express = require('express');
+const mongoose = require('mongoose');
+const cors = require('cors');
 
 const app = express();
 
 // Middleware
-app.use(cors({
-  origin: ['http://localhost:3000', 'http://localhost:3001'],
-  credentials: true
-}));
-
+app.use(cors());
 app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
 
-// Servir archivos estáticos
-app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+// Log de variables de entorno (para debug)
+console.log('🔧 Variables de entorno:');
+console.log('MONGODB_URI:', process.env.MONGODB_URI ? '✅ Configurada' : '❌ No configurada');
+console.log('NODE_ENV:', process.env.NODE_ENV || 'development');
+console.log('PORT:', process.env.PORT);
 
-// ===== DATOS EN MEMORIA =====
-let subscribers = [];
-let admins = [
-  {
-    _id: '1',
-    name: 'Administrador Principal',
-    email: 'admin@garlycorporations.com',
-    role: 'superadmin',
-    isActive: true,
-    createdAt: new Date()
-  }
-];
+// Conectar a MongoDB si la variable existe
+if (process.env.MONGODB_URI) {
+  console.log('🔄 Conectando a MongoDB Atlas...');
+  mongoose.connect(process.env.MONGODB_URI, {
+    useNewUrlParser: true,
+    useUnifiedTopology: true,
+  })
+  .then(() => {
+    console.log('✅ Conectado a MongoDB Atlas exitosamente!');
+  })
+  .catch((error) => {
+    console.log('❌ Error conectando a MongoDB:', error.message);
+    console.log('💡 Verifica tu string de conexión en MongoDB Atlas');
+  });
+} else {
+  console.log('🔧 Modo offline - MongoDB URI no configurado');
+}
 
-let contracts = [
-  {
-    _id: '1',
-    subscriberId: '1',
-    subscriberName: 'Juan Pérez',
-    fileName: 'contrato-juan-perez.pdf',
-    originalName: 'contrato.pdf',
-    filePath: '/uploads/contratos/contrato-juan-perez.pdf',
-    fileSize: 2621440, // 2.5 MB
-    fileType: 'application/pdf',
-    uploadDate: new Date('2024-01-15'),
-    uploadedBy: '1'
-  },
-  {
-    _id: '2', 
-    subscriberId: '2',
-    subscriberName: 'Maria Garcia',
-    fileName: 'contrato-maria-garcia.docx',
-    originalName: 'contrato.docx',
-    filePath: '/uploads/contratos/contrato-maria-garcia.docx',
-    fileSize: 1887436, // 1.8 MB
-    fileType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-    uploadDate: new Date('2024-01-10'),
-    uploadedBy: '1'
-  }
-];
+// Health check mejorado
+app.get('/api/health', (req, res) => {
+  const mongoStatus = mongoose.connection.readyState === 1 ? 'connected' : 'disconnected';
+  
+  res.json({ 
+    status: 'OK', 
+    message: 'GarlyCorporations API is running!',
+    mode: process.env.MONGODB_URI ? 'production' : 'offline',
+    mongoDB: mongoStatus,
+    timestamp: new Date().toISOString()
+  });
+});
 
-// ===== RUTAS DE AUTENTICACIÓN =====
+// Auth route básica para producción
 app.post('/api/auth/login', (req, res) => {
   const { email, password } = req.body;
-  
-  console.log('🔐 Login attempt:', email);
   
   if (email === 'admin@garlycorporations.com' && password === 'admin123') {
     res.json({
       success: true,
-      token: 'dev_jwt_token_' + Date.now(),
+      token: 'jwt-token-' + Date.now(),
       admin: {
-        _id: '1',
         name: 'Administrador Principal',
         email: 'admin@garlycorporations.com',
         role: 'superadmin'
@@ -85,16 +63,16 @@ app.post('/api/auth/login', (req, res) => {
   } else {
     res.status(401).json({
       success: false,
-      message: 'Credenciales inválidas'
+      message: 'Credenciales incorrectas'
     });
   }
 });
 
+// Verificar token
 app.get('/api/auth/verify', (req, res) => {
   res.json({
     success: true,
     admin: {
-      _id: '1',
       name: 'Administrador Principal',
       email: 'admin@garlycorporations.com',
       role: 'superadmin'
@@ -102,299 +80,19 @@ app.get('/api/auth/verify', (req, res) => {
   });
 });
 
-// ===== RUTAS DE SUSCRIPTORES =====
-app.get('/api/subscribers', (req, res) => {
-  res.json({
-    success: true,
-    subscribers: subscribers
-  });
-});
-
-app.post('/api/subscribers', (req, res) => {
-  try {
-    const newSubscriber = {
-      _id: Date.now().toString(),
-      ...req.body,
-      createdAt: new Date(),
-      status: 'active',
-      createdBy: '1'
-    };
-    
-    subscribers.push(newSubscriber);
-    
-    console.log('✅ Suscriptor creado:', newSubscriber.name);
-    
-    res.json({
-      success: true,
-      subscriber: newSubscriber
-    });
-  } catch (error) {
-    console.error('❌ Error creando suscriptor:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Error creando suscriptor'
-    });
-  }
-});
-
-app.put('/api/subscribers/:id', (req, res) => {
-  try {
-    const id = req.params.id;
-    const index = subscribers.findIndex(s => s._id === id);
-    
-    if (index !== -1) {
-      subscribers[index] = { ...subscribers[index], ...req.body };
-      res.json({ 
-        success: true, 
-        subscriber: subscribers[index] 
-      });
-    } else {
-      res.status(404).json({ 
-        success: false, 
-        message: 'Suscriptor no encontrado' 
-      });
-    }
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: 'Error actualizando suscriptor'
-    });
-  }
-});
-
-app.delete('/api/subscribers/:id', (req, res) => {
-  try {
-    const id = req.params.id;
-    const index = subscribers.findIndex(s => s._id === id);
-    
-    if (index !== -1) {
-      const deletedSubscriber = subscribers.splice(index, 1)[0];
-      console.log('🗑️ Suscriptor eliminado:', deletedSubscriber.name);
-      res.json({ 
-        success: true, 
-        message: 'Suscriptor eliminado' 
-      });
-    } else {
-      res.status(404).json({ 
-        success: false, 
-        message: 'Suscriptor no encontrado' 
-      });
-    }
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: 'Error eliminando suscriptor'
-    });
-  }
-});
-
-// ===== RUTAS DE CONTRATOS =====
-app.get('/api/contracts', (req, res) => {
-  res.json({
-    success: true,
-    contracts: contracts
-  });
-});
-
-app.post('/api/contracts', (req, res) => {
-  try {
-    const { subscriberId, subscriberName, fileName, originalName, fileSize, fileType } = req.body;
-    
-    const newContract = {
-      _id: Date.now().toString(),
-      subscriberId,
-      subscriberName,
-      fileName,
-      originalName,
-      filePath: `/uploads/contratos/${fileName}`,
-      fileSize,
-      fileType,
-      uploadDate: new Date(),
-      uploadedBy: '1'
-    };
-    
-    contracts.push(newContract);
-    
-    console.log('✅ Contrato subido:', newContract.fileName);
-    
-    res.json({
-      success: true,
-      contract: newContract
-    });
-  } catch (error) {
-    console.error('❌ Error subiendo contrato:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Error subiendo contrato'
-    });
-  }
-});
-
-app.put('/api/contracts/:id', (req, res) => {
-  try {
-    const id = req.params.id;
-    const index = contracts.findIndex(c => c._id === id);
-    
-    if (index !== -1) {
-      contracts[index] = { ...contracts[index], ...req.body };
-      res.json({ 
-        success: true, 
-        contract: contracts[index] 
-      });
-    } else {
-      res.status(404).json({ 
-        success: false, 
-        message: 'Contrato no encontrado' 
-      });
-    }
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: 'Error actualizando contrato'
-    });
-  }
-});
-
-app.delete('/api/contracts/:id', (req, res) => {
-  try {
-    const id = req.params.id;
-    const index = contracts.findIndex(c => c._id === id);
-    
-    if (index !== -1) {
-      const deletedContract = contracts.splice(index, 1)[0];
-      console.log('🗑️ Contrato eliminado:', deletedContract.fileName);
-      res.json({ 
-        success: true, 
-        message: 'Contrato eliminado' 
-      });
-    } else {
-      res.status(404).json({ 
-        success: false, 
-        message: 'Contrato no encontrado' 
-      });
-    }
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: 'Error eliminando contrato'
-    });
-  }
-});
-
-// ===== RUTA PARA DESCARGAR CONTRATOS =====
-app.get('/api/contracts/download/:id', (req, res) => {
-  try {
-    const id = req.params.id;
-    const contract = contracts.find(c => c._id === id);
-    
-    if (!contract) {
-      return res.status(404).json({
-        success: false,
-        message: 'Contrato no encontrado'
-      });
-    }
-    
-    // En modo desarrollo, simular descarga
-    res.json({
-      success: true,
-      message: 'Descarga simulada - En producción se descargaría el archivo real',
-      contract: contract
-    });
-    
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: 'Error descargando contrato'
-    });
-  }
-});
-
-// ===== RUTAS DE UPLOAD =====
-app.post('/api/upload/contract', (req, res) => {
-  // Simular upload exitoso
-  const fileName = 'contrato_' + Date.now() + '.pdf';
-  
-  res.json({
-    success: true,
-    file: {
-      filename: fileName,
-      originalname: 'contrato.pdf',
-      path: '/uploads/contratos/' + fileName,
-      size: 1024000
-    }
-  });
-});
-
-// ===== RUTAS DE ADMINISTRADORES =====
-app.get('/api/admins', (req, res) => {
-  res.json({
-    success: true,
-    admins: admins
-  });
-});
-
-// ===== RUTAS DEL SISTEMA =====
-app.get('/api/health', (req, res) => {
-  res.json({ 
-    status: 'OK', 
-    message: 'Server is running in offline mode',
-    mode: 'offline (in-memory data)',
-    subscribersCount: subscribers.length,
-    contractsCount: contracts.length
-  });
-});
-
+// Ruta de prueba
 app.get('/api/test', (req, res) => {
-  res.json({ 
-    message: 'Backend funcionando en modo offline',
-    timestamp: new Date().toISOString(),
-    data: {
-      subscribers: subscribers.length,
-      admins: admins.length,
-      contracts: contracts.length
-    }
-  });
-});
-
-// ===== SUSCRIPTORES POR VENCER =====
-app.get('/api/subscribers/expiring', (req, res) => {
-  const expiringSubscribers = subscribers.filter(sub => {
-    const endDate = new Date(sub.endDate);
-    const today = new Date();
-    const diffTime = endDate - today;
-    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-    return diffDays <= 30 && diffDays > 0;
-  });
-  
   res.json({
-    success: true,
-    subscribers: expiringSubscribers
+    message: 'Backend funcionando correctamente',
+    environment: process.env.NODE_ENV || 'development',
+    mongoConnected: mongoose.connection.readyState === 1
   });
 });
 
-// ===== MANEJO DE ERRORES =====
-app.use((err, req, res, next) => {
-  console.error('🔥 Error del servidor:', err.stack);
-  res.status(500).json({ 
-    message: 'Something went wrong!',
-    error: process.env.NODE_ENV === 'development' ? err.message : 'Internal server error'
-  });
-});
-
-// ===== RUTA 404 =====
-app.use('*', (req, res) => {
-  res.status(404).json({ message: 'Route not found' });
-});
-
-// ===== INICIAR SERVIDOR =====
-const PORT = process.env.PORT || 5000;
-
+const PORT = process.env.PORT || 10000;
 app.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
-  console.log(`📊 Health check: http://localhost:${PORT}/api/health`);
-  console.log(`🧪 Test endpoint: http://localhost:${PORT}/api/test`);
-  console.log(`💡 Modo: Offline (datos en memoria)`);
-  console.log(`🔐 Login: admin@garlycorporations.com / admin123`);
-  console.log(`📱 Frontend: http://localhost:3001`);
-  console.log(`📄 Contratos: ${contracts.length} contratos de ejemplo cargados`);
+  console.log(`📊 Environment: ${process.env.NODE_ENV || 'development'}`);
+  console.log(`🗄️ MongoDB: ${process.env.MONGODB_URI ? 'Configurado' : 'No configurado'}`);
+  console.log(`🌐 Health: http://localhost:${PORT}/api/health`);
 });
