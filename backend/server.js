@@ -5,75 +5,44 @@ const cors = require('cors');
 
 const app = express();
 
+// Configuración de CORS para permitir credenciales
+const corsOptions = {
+  origin: 'https://garlycorporations-frontend.onrender.com',
+  credentials: true,
+  optionsSuccessStatus: 200
+};
+
 // Middleware
-app.use(cors());
+app.use(cors(corsOptions));
 app.use(express.json());
 
-// Log detallado para debug
-console.log('=== 🚀 INICIANDO BACKEND ===');
-console.log('MONGODB_URI:', process.env.MONGODB_URI ? '✅ CONFIGURADA' : '❌ NO CONFIGURADA');
-console.log('NODE_ENV:', process.env.NODE_ENV);
-console.log('PORT:', process.env.PORT);
+// Log de variables de entorno
+console.log('🔧 Variables de entorno:');
+console.log('MONGODB_URI:', process.env.MONGODB_URI ? '✅ Configurada' : '❌ No configurada');
 
-// Datos en memoria para funcionar siempre
-let subscribers = [];
-let contracts = [];
-
-// Intentar conectar a MongoDB solo si la URI es válida
-if (process.env.MONGODB_URI && process.env.MONGODB_URI.includes('mongodb+srv://')) {
-  console.log('🔄 Intentando conectar a MongoDB Atlas...');
+// Conexión a MongoDB
+if (process.env.MONGODB_URI) {
+  console.log('🔄 Conectando a MongoDB Atlas...');
   mongoose.connect(process.env.MONGODB_URI, {
     useNewUrlParser: true,
     useUnifiedTopology: true,
   })
   .then(() => {
-    console.log('✅ CONECTADO A MONGODB ATLAS!');
-    // Aquí cargaríamos los modelos reales
+    console.log('✅ Conectado a MongoDB Atlas exitosamente!');
   })
   .catch((error) => {
-    console.log('❌ Error MongoDB:', error.message);
-    console.log('💡 Usando base de datos en memoria');
+    console.log('❌ Error conectando a MongoDB:', error.message);
   });
-} else {
-  console.log('🔧 Usando base de datos en memoria (MongoDB no configurado)');
-  
-  // Datos de ejemplo
-  subscribers = [
-    {
-      _id: '1',
-      name: 'Carlos Benjamin',
-      email: 'mbaesonojuanbenjaminmba@gmail.com',
-      country: 'España',
-      paymentMethod: 'paypal',
-      startDate: new Date().toISOString(),
-      endDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
-      status: 'active',
-      createdAt: new Date().toISOString()
-    },
-    {
-      _id: '2',
-      name: 'Ana Rodríguez',
-      email: 'ana@ejemplo.com',
-      country: 'México',
-      paymentMethod: 'credit_card',
-      startDate: new Date().toISOString(),
-      endDate: new Date(Date.now() + 60 * 24 * 60 * 60 * 1000).toISOString(),
-      status: 'active',
-      createdAt: new Date().toISOString()
-    }
-  ];
 }
 
-// Health check mejorado
+// Health check
 app.get('/api/health', (req, res) => {
-  const mongoConnected = mongoose.connection.readyState === 1;
-  
-  res.json({ 
-    status: 'OK', 
+  const mongoStatus = mongoose.connection.readyState === 1 ? 'connected' : 'disconnected';
+  res.json({
+    status: 'OK',
     message: 'GarlyCorporations API is running!',
-    mode: mongoConnected ? 'production' : 'offline',
-    database: mongoConnected ? 'MongoDB Atlas' : 'Memoria',
-    subscribersCount: subscribers.length,
+    mode: process.env.MONGODB_URI ? 'production' : 'offline',
+    mongoDB: mongoStatus,
     timestamp: new Date().toISOString()
   });
 });
@@ -81,9 +50,6 @@ app.get('/api/health', (req, res) => {
 // Auth routes
 app.post('/api/auth/login', (req, res) => {
   const { email, password } = req.body;
-  
-  console.log('🔐 Intento de login:', email);
-  
   if (email === 'admin@garlycorporations.com' && password === 'admin123') {
     res.json({
       success: true,
@@ -113,64 +79,18 @@ app.get('/api/auth/verify', (req, res) => {
   });
 });
 
-// Subscribers routes
-app.get('/api/subscribers', (req, res) => {
+// Ruta de prueba
+app.get('/api/test', (req, res) => {
   res.json({
-    success: true,
-    subscribers: subscribers
-  });
-});
-
-app.post('/api/subscribers', (req, res) => {
-  const newSubscriber = {
-    _id: 'sub-' + Date.now(),
-    ...req.body,
-    createdAt: new Date().toISOString(),
-    status: 'active'
-  };
-  subscribers.push(newSubscriber);
-  
-  console.log('✅ Nuevo suscriptor creado:', newSubscriber.name);
-  
-  res.json({ 
-    success: true, 
-    subscriber: newSubscriber,
-    message: 'Suscriptor creado exitosamente'
-  });
-});
-
-// Contracts routes
-app.get('/api/contracts', (req, res) => {
-  res.json({
-    success: true,
-    contracts: contracts
-  });
-});
-
-app.post('/api/contracts/upload', (req, res) => {
-  // Simular upload exitoso
-  const newContract = {
-    _id: 'contract-' + Date.now(),
-    subscriberName: 'Suscriptor Demo',
-    originalName: 'contrato.pdf',
-    fileType: 'application/pdf',
-    uploadDate: new Date().toISOString(),
-    fileSize: 1024000
-  };
-  contracts.push(newContract);
-  
-  res.json({
-    success: true,
-    message: 'Contrato subido exitosamente',
-    contract: newContract
+    message: 'Backend funcionando correctamente',
+    environment: process.env.NODE_ENV || 'development',
+    mongoConnected: mongoose.connection.readyState === 1
   });
 });
 
 const PORT = process.env.PORT || 10000;
 app.listen(PORT, () => {
-  console.log(`=== 🚀 SERVER INICIADO ===`);
-  console.log(`📍 Puerto: ${PORT}`);
-  console.log(`🌐 URL: https://garlycorporations.onrender.com`);
-  console.log(`📊 Health: https://garlycorporations.onrender.com/api/health`);
-  console.log(`💾 Database: ${mongoose.connection.readyState === 1 ? 'MongoDB Atlas' : 'Memoria'}`);
+  console.log(`🚀 Server running on port ${PORT}`);
+  console.log(`📊 Environment: ${process.env.NODE_ENV || 'development'}`);
+  console.log(`🗄️ MongoDB: ${process.env.MONGODB_URI ? 'Configurado' : 'No configurado'}`);
 });
