@@ -1,54 +1,94 @@
-﻿import express from 'express';
-import cors from 'cors';
-import dotenv from 'dotenv';
-import path from 'path';
-import { fileURLToPath } from 'url';
-
-// Configurar dotenv
-dotenv.config();
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+﻿require('dotenv').config();
+const express = require('express');
+const mongoose = require('mongoose');
+const cors = require('cors');
 
 const app = express();
 
 // Middleware
-app.use(cors({
-  origin: ['http://localhost:3000', 'http://localhost:3001'],
-  credentials: true
-}));
-
+app.use(cors());
 app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
 
-// Servir archivos estáticos
-app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+// Log detallado para debug
+console.log('=== 🚀 INICIANDO BACKEND ===');
+console.log('MONGODB_URI:', process.env.MONGODB_URI ? '✅ CONFIGURADA' : '❌ NO CONFIGURADA');
+console.log('NODE_ENV:', process.env.NODE_ENV);
+console.log('PORT:', process.env.PORT);
 
-// ===== DATOS EN MEMORIA =====
+// Datos en memoria para funcionar siempre
 let subscribers = [];
-let admins = [
-  {
-    _id: '1',
-    name: 'Administrador Principal',
-    email: 'admin@garlycorporations.com',
-    role: 'superadmin',
-    isActive: true,
-    createdAt: new Date()
-  }
-];
+let contracts = [];
 
-// ===== RUTAS DE AUTENTICACIÓN =====
+// Intentar conectar a MongoDB solo si la URI es válida
+if (process.env.MONGODB_URI && process.env.MONGODB_URI.includes('mongodb+srv://')) {
+  console.log('🔄 Intentando conectar a MongoDB Atlas...');
+  mongoose.connect(process.env.MONGODB_URI, {
+    useNewUrlParser: true,
+    useUnifiedTopology: true,
+  })
+  .then(() => {
+    console.log('✅ CONECTADO A MONGODB ATLAS!');
+    // Aquí cargaríamos los modelos reales
+  })
+  .catch((error) => {
+    console.log('❌ Error MongoDB:', error.message);
+    console.log('💡 Usando base de datos en memoria');
+  });
+} else {
+  console.log('🔧 Usando base de datos en memoria (MongoDB no configurado)');
+  
+  // Datos de ejemplo
+  subscribers = [
+    {
+      _id: '1',
+      name: 'Carlos Benjamin',
+      email: 'mbaesonojuanbenjaminmba@gmail.com',
+      country: 'España',
+      paymentMethod: 'paypal',
+      startDate: new Date().toISOString(),
+      endDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+      status: 'active',
+      createdAt: new Date().toISOString()
+    },
+    {
+      _id: '2',
+      name: 'Ana Rodríguez',
+      email: 'ana@ejemplo.com',
+      country: 'México',
+      paymentMethod: 'credit_card',
+      startDate: new Date().toISOString(),
+      endDate: new Date(Date.now() + 60 * 24 * 60 * 60 * 1000).toISOString(),
+      status: 'active',
+      createdAt: new Date().toISOString()
+    }
+  ];
+}
+
+// Health check mejorado
+app.get('/api/health', (req, res) => {
+  const mongoConnected = mongoose.connection.readyState === 1;
+  
+  res.json({ 
+    status: 'OK', 
+    message: 'GarlyCorporations API is running!',
+    mode: mongoConnected ? 'production' : 'offline',
+    database: mongoConnected ? 'MongoDB Atlas' : 'Memoria',
+    subscribersCount: subscribers.length,
+    timestamp: new Date().toISOString()
+  });
+});
+
+// Auth routes
 app.post('/api/auth/login', (req, res) => {
   const { email, password } = req.body;
   
-  console.log('🔐 Login attempt:', email);
+  console.log('🔐 Intento de login:', email);
   
   if (email === 'admin@garlycorporations.com' && password === 'admin123') {
     res.json({
       success: true,
-      token: 'dev_jwt_token_' + Date.now(),
+      token: 'jwt-token-' + Date.now(),
       admin: {
-        _id: '1',
         name: 'Administrador Principal',
         email: 'admin@garlycorporations.com',
         role: 'superadmin'
@@ -57,7 +97,7 @@ app.post('/api/auth/login', (req, res) => {
   } else {
     res.status(401).json({
       success: false,
-      message: 'Credenciales inválidas'
+      message: 'Credenciales incorrectas'
     });
   }
 });
@@ -66,7 +106,6 @@ app.get('/api/auth/verify', (req, res) => {
   res.json({
     success: true,
     admin: {
-      _id: '1',
       name: 'Administrador Principal',
       email: 'admin@garlycorporations.com',
       role: 'superadmin'
@@ -74,7 +113,7 @@ app.get('/api/auth/verify', (req, res) => {
   });
 });
 
-// ===== RUTAS DE SUSCRIPTORES =====
+// Subscribers routes
 app.get('/api/subscribers', (req, res) => {
   res.json({
     success: true,
@@ -83,164 +122,55 @@ app.get('/api/subscribers', (req, res) => {
 });
 
 app.post('/api/subscribers', (req, res) => {
-  try {
-    const newSubscriber = {
-      _id: Date.now().toString(),
-      ...req.body,
-      createdAt: new Date(),
-      status: 'active',
-      createdBy: '1'
-    };
-    
-    subscribers.push(newSubscriber);
-    
-    console.log('✅ Suscriptor creado:', newSubscriber.name);
-    
-    res.json({
-      success: true,
-      subscriber: newSubscriber
-    });
-  } catch (error) {
-    console.error('❌ Error creando suscriptor:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Error creando suscriptor'
-    });
-  }
+  const newSubscriber = {
+    _id: 'sub-' + Date.now(),
+    ...req.body,
+    createdAt: new Date().toISOString(),
+    status: 'active'
+  };
+  subscribers.push(newSubscriber);
+  
+  console.log('✅ Nuevo suscriptor creado:', newSubscriber.name);
+  
+  res.json({ 
+    success: true, 
+    subscriber: newSubscriber,
+    message: 'Suscriptor creado exitosamente'
+  });
 });
 
-app.put('/api/subscribers/:id', (req, res) => {
-  try {
-    const id = req.params.id;
-    const index = subscribers.findIndex(s => s._id === id);
-    
-    if (index !== -1) {
-      subscribers[index] = { ...subscribers[index], ...req.body };
-      res.json({ 
-        success: true, 
-        subscriber: subscribers[index] 
-      });
-    } else {
-      res.status(404).json({ 
-        success: false, 
-        message: 'Suscriptor no encontrado' 
-      });
-    }
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: 'Error actualizando suscriptor'
-    });
-  }
+// Contracts routes
+app.get('/api/contracts', (req, res) => {
+  res.json({
+    success: true,
+    contracts: contracts
+  });
 });
 
-app.delete('/api/subscribers/:id', (req, res) => {
-  try {
-    const id = req.params.id;
-    const index = subscribers.findIndex(s => s._id === id);
-    
-    if (index !== -1) {
-      const deletedSubscriber = subscribers.splice(index, 1)[0];
-      console.log('🗑️ Suscriptor eliminado:', deletedSubscriber.name);
-      res.json({ 
-        success: true, 
-        message: 'Suscriptor eliminado' 
-      });
-    } else {
-      res.status(404).json({ 
-        success: false, 
-        message: 'Suscriptor no encontrado' 
-      });
-    }
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: 'Error eliminando suscriptor'
-    });
-  }
-});
-
-// ===== RUTAS DE UPLOAD =====
-app.post('/api/upload/contract', (req, res) => {
+app.post('/api/contracts/upload', (req, res) => {
   // Simular upload exitoso
-  res.json({
-    success: true,
-    file: {
-      filename: 'contrato_' + Date.now() + '.pdf',
-      originalname: 'contrato.pdf',
-      path: '/uploads/contratos/contrato_' + Date.now() + '.pdf',
-      size: 1024000
-    }
-  });
-});
-
-// ===== RUTAS DE ADMINISTRADORES =====
-app.get('/api/admins', (req, res) => {
-  res.json({
-    success: true,
-    admins: admins
-  });
-});
-
-// ===== RUTAS DEL SISTEMA =====
-app.get('/api/health', (req, res) => {
-  res.json({ 
-    status: 'OK', 
-    message: 'Server is running in offline mode',
-    mode: 'offline (in-memory data)',
-    subscribersCount: subscribers.length
-  });
-});
-
-app.get('/api/test', (req, res) => {
-  res.json({ 
-    message: 'Backend funcionando en modo offline',
-    timestamp: new Date().toISOString(),
-    data: {
-      subscribers: subscribers.length,
-      admins: admins.length
-    }
-  });
-});
-
-// ===== SUSCRIPTORES POR VENCER =====
-app.get('/api/subscribers/expiring', (req, res) => {
-  const expiringSubscribers = subscribers.filter(sub => {
-    const endDate = new Date(sub.endDate);
-    const today = new Date();
-    const diffTime = endDate - today;
-    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-    return diffDays <= 30 && diffDays > 0;
-  });
+  const newContract = {
+    _id: 'contract-' + Date.now(),
+    subscriberName: 'Suscriptor Demo',
+    originalName: 'contrato.pdf',
+    fileType: 'application/pdf',
+    uploadDate: new Date().toISOString(),
+    fileSize: 1024000
+  };
+  contracts.push(newContract);
   
   res.json({
     success: true,
-    subscribers: expiringSubscribers
+    message: 'Contrato subido exitosamente',
+    contract: newContract
   });
 });
 
-// ===== MANEJO DE ERRORES =====
-app.use((err, req, res, next) => {
-  console.error('🔥 Error del servidor:', err.stack);
-  res.status(500).json({ 
-    message: 'Something went wrong!',
-    error: process.env.NODE_ENV === 'development' ? err.message : 'Internal server error'
-  });
-});
-
-// ===== RUTA 404 =====
-app.use('*', (req, res) => {
-  res.status(404).json({ message: 'Route not found' });
-});
-
-// ===== INICIAR SERVIDOR =====
-const PORT = process.env.PORT || 5000;
-
+const PORT = process.env.PORT || 10000;
 app.listen(PORT, () => {
-  console.log(`🚀 Server running on port ${PORT}`);
-  console.log(`📊 Health check: http://localhost:${PORT}/api/health`);
-  console.log(`🧪 Test endpoint: http://localhost:${PORT}/api/test`);
-  console.log(`💡 Modo: Offline (datos en memoria)`);
-  console.log(`🔐 Login: admin@garlycorporations.com / admin123`);
-  console.log(`📱 Frontend: http://localhost:3001`);
+  console.log(`=== 🚀 SERVER INICIADO ===`);
+  console.log(`📍 Puerto: ${PORT}`);
+  console.log(`🌐 URL: https://garlycorporations.onrender.com`);
+  console.log(`📊 Health: https://garlycorporations.onrender.com/api/health`);
+  console.log(`💾 Database: ${mongoose.connection.readyState === 1 ? 'MongoDB Atlas' : 'Memoria'}`);
 });
