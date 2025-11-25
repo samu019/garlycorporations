@@ -5,14 +5,14 @@ const cors = require('cors');
 
 const app = express();
 
-// Configuración de CORS para permitir credenciales
+// Configuración CORS específica para tu frontend
 const corsOptions = {
   origin: 'https://garlycorporations-frontend.onrender.com',
   credentials: true,
-  optionsSuccessStatus: 200
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
 };
 
-// Middleware
 app.use(cors(corsOptions));
 app.use(express.json());
 
@@ -91,6 +91,6 @@ app.get('/api/test', (req, res) => {
 const PORT = process.env.PORT || 10000;
 app.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
-  console.log(`📊 Environment: ${process.env.NODE_ENV || 'development'}`);
-  console.log(`🗄️ MongoDB: ${process.env.MONGODB_URI ? 'Configurado' : 'No configurado'}`);
+  console.log(`🌐 Frontend URL: https://garlycorporations-frontend.onrender.com`);
+  console.log(`🔧 CORS configurado para frontend específico`);
 });
