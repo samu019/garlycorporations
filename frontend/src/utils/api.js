@@ -1,11 +1,12 @@
 ﻿import axios from 'axios';
 
-// URL DEL BACKEND EN PRODUCCIÓN - HARDCODEADA
 const API_BASE_URL = 'https://garlycorporations.onrender.com/api';
 console.log('🎯 Backend URL:', API_BASE_URL);
 
 const api = axios.create({
   baseURL: API_BASE_URL,
+  // TEMPORAL: Deshabilitar withCredentials para evitar CORS preflight
+  // withCredentials: true,
   timeout: 15000,
 });
 
@@ -32,6 +33,12 @@ api.interceptors.response.use(
     return Promise.reject(error);
   }
 );
+
+// Exportar todas las APIs...
+export const authAPI = {
+  login: (credentials) => api.post('/auth/login', credentials),
+  verify: () => api.get('/auth/verify'),
+};
 
 export const subscribersAPI = {
   getAll: () => api.get('/subscribers'),
@@ -61,11 +68,6 @@ export const uploadAPI = {
       'Content-Type': 'multipart/form-data',
     },
   }),
-};
-
-export const authAPI = {
-  login: (credentials) => api.post('/auth/login', credentials),
-  verify: () => api.get('/auth/verify'),
 };
 
 export const adminsAPI = {
